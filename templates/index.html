@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日本株アナライザー</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>日本株アナライザー</h1>
+        <nav>
+            <button class="nav-btn active" data-view="cards">銘柄詳細</button>
+            <button class="nav-btn" data-view="summary">サマリー</button>
+            <button class="nav-btn" data-view="add">銘柄追加</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- カード表示（スワイプ対応） -->
+        <section id="cards-view" class="view active">
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>株価データを取得中...</p>
+            </div>
+            <div id="card-container">
+                <div id="card-wrapper"></div>
+            </div>
+            <div id="card-nav">
+                <button id="prev-btn" class="card-nav-btn" disabled>&larr; 前の銘柄</button>
+                <span id="card-indicator"></span>
+                <button id="next-btn" class="card-nav-btn">次の銘柄 &rarr;</button>
+            </div>
+        </section>
+
+        <!-- サマリー表 -->
+        <section id="summary-view" class="view">
+            <div id="summary-loading" class="loading">
+                <div class="spinner"></div>
+                <p>データ読み込み中...</p>
+            </div>
+            <div id="summary-table-container"></div>
+        </section>
+
+        <!-- 銘柄追加 -->
+        <section id="add-view" class="view">
+            <div class="add-form-container">
+                <h2>銘柄を追加</h2>
+                <p class="form-description">東証に上場している銘柄の4桁コードを入力してください</p>
+                <div class="add-form">
+                    <input type="text" id="stock-code-input" placeholder="例: 7203" maxlength="4" pattern="[0-9]{4}">
+                    <button id="add-stock-btn">追加</button>
+                </div>
+                <div id="add-result"></div>
+                <h3>登録済み銘柄</h3>
+                <div id="registered-stocks"></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
