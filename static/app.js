@@ -34,12 +34,40 @@ async function loadAllData() {
     showLoading(true);
     try {
         const res = await fetch("/api/analyze/all");
-        stockData = await res.json();
+        const json = await res.json();
+
+        // 新しいレスポンス形式: { results: [...], errors: [...] }
+        if (json.results !== undefined) {
+            stockData = json.results;
+            const errors = json.errors || [];
+
+            if (stockData.length === 0 && errors.length > 0) {
+                const errorNames = errors.map(e => `${e.code}(${e.name})`).join(", ");
+                showError(`全銘柄のデータ取得に失敗しました: ${errorNames}<br>
+                    <span style="font-size:0.8rem">render.comのログか <a href="/api/debug/${errors[0].code}" style="color:var(--blue)">/api/debug/${errors[0].code}</a> で詳細を確認してください</span>`);
+                return;
+            }
+            if (errors.length > 0) {
+                const errorNames = errors.map(e => `${e.code}`).join(", ");
+                console.warn(`一部銘柄の取得に失敗: ${errorNames}`);
+            }
+        } else if (Array.isArray(json)) {
+            // 旧形式の互換性
+            stockData = json;
+        } else if (json.error) {
+            showError(`サーバーエラー: ${json.error}`);
+            return;
+        }
+
+        if (stockData.length === 0) {
+            showError("データが取得できませんでした。しばらく待ってから再読み込みしてください。");
+            return;
+        }
+
         renderCards();
         showLoading(false);
     } catch (err) {
-        document.getElementById("loading").innerHTML =
-            `<p style="color: var(--red);">データの取得に失敗しました。再読み込みしてください。</p>`;
+        showError(`通信エラー: ${err.message}<br>ページを再読み込みしてください。`);
     }
 }
 
@@ -49,12 +77,26 @@ function showLoading(show) {
     document.getElementById("card-nav").style.display = show ? "none" : "flex";
 }
 
+function showError(message) {
+    const el = document.getElementById("loading");
+    el.classList.remove("hidden");
+    el.innerHTML = `
+        <div style="text-align:center; padding:40px 20px;">
+            <div style="font-size:2rem; margin-bottom:16px;">&#x26A0;</div>
+            <p style="color: var(--red); margin-bottom:16px; line-height:1.6">${message}</p>
+            <button onclick="location.reload()" style="padding:10px 24px; background:var(--accent); color:white; border:none; border-radius:8px; cursor:pointer; font-size:0.9rem;">再読み込み</button>
+        </div>
+    `;
+    document.getElementById("card-container").style.display = "none";
+    document.getElementById("card-nav").style.display = "none";
+}
+
 // ==================== Card Rendering ====================
 function renderCards() {
     const wrapper = document.getElementById("card-wrapper");
     wrapper.innerHTML = "";
 
-    stockData.forEach((stock, idx) => {
+    stockData.forEach((stock) => {
         const card = document.createElement("div");
         card.className = "stock-card";
         card.innerHTML = buildCardHTML(stock);
@@ -66,7 +108,7 @@ function renderCards() {
     setupSwipe();
 
     // Draw charts after rendering
-    stockData.forEach((stock, idx) => {
+    stockData.forEach((stock) => {
         drawMiniChart(`chart-${stock.code}`, stock.recent_prices);
     });
 }
@@ -134,15 +176,15 @@ function buildCardHTML(stock) {
         <div class="technicals">
             <div class="tech-item">
                 <div class="tech-label">SMA5</div>
-                <div class="tech-value">${stock.sma5 ? stock.sma5.toLocaleString() : "-"}</div>
+                <div class="tech-value">${stock.sma5 != null ? stock.sma5.toLocaleString() : "-"}</div>
             </div>
             <div class="tech-item">
                 <div class="tech-label">SMA25</div>
-                <div class="tech-value">${stock.sma25 ? stock.sma25.toLocaleString() : "-"}</div>
+                <div class="tech-value">${stock.sma25 != null ? stock.sma25.toLocaleString() : "-"}</div>
             </div>
             <div class="tech-item">
                 <div class="tech-label">SMA75</div>
-                <div class="tech-value">${stock.sma75 ? stock.sma75.toLocaleString() : "-"}</div>
+                <div class="tech-value">${stock.sma75 != null ? stock.sma75.toLocaleString() : "-"}</div>
             </div>
             <div class="tech-item">
                 <div class="tech-label">RSI</div>
@@ -280,7 +322,6 @@ function drawMiniChart(canvasId, prices) {
 
     // Gradient fill
     const lastX = padding.left + chartW;
-    const lastY = padding.top + chartH - ((closes[closes.length - 1] - minPrice) / priceRange) * chartH;
     ctx.lineTo(lastX, padding.top + chartH);
     ctx.lineTo(padding.left, padding.top + chartH);
     ctx.closePath();
@@ -310,6 +351,7 @@ function renderSummaryTable() {
 
     if (stockData.length === 0) {
         loading.classList.remove("hidden");
+        loading.innerHTML = `<p style="color:var(--text-secondary); text-align:center; padding:40px;">データがありません。銘柄詳細タブに戻って再読み込みしてください。</p>`;
         return;
     }
     loading.classList.add("hidden");
@@ -390,7 +432,6 @@ function setupAddForm() {
             if (data.success) {
                 input.value = "";
                 loadRegisteredStocks();
-                // Reload analysis data
                 loadAllData();
             }
         } catch (err) {

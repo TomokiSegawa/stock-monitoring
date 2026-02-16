@@ -3,8 +3,15 @@
 Flask + Yahoo Finance API
 """
 
+import logging
 from flask import Flask, render_template, jsonify, request
-from stock_analyzer import analyze_stock, analyze_all_stocks, add_stock, remove_stock, get_all_stocks
+from stock_analyzer import (
+    analyze_stock, analyze_all_stocks, add_stock, remove_stock,
+    get_all_stocks, debug_fetch,
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -23,9 +30,13 @@ def api_stocks():
 
 @app.route("/api/analyze/all")
 def api_analyze_all():
-    """全銘柄の分析結果を返す"""
-    results = analyze_all_stocks()
-    return jsonify(results)
+    """全銘柄の分析結果を返す（エラー情報も含む）"""
+    try:
+        data = analyze_all_stocks()
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"全銘柄分析エラー: {e}", exc_info=True)
+        return jsonify({"results": [], "errors": [], "error": str(e)}), 500
 
 
 @app.route("/api/analyze/<code>")
@@ -43,7 +54,8 @@ def api_add_stock():
     data = request.get_json()
     code = data.get("code", "")
     success, message = add_stock(code)
-    return jsonify({"success": success, "message": message}), 200 if success else 400
+    status_code = 200 if success else 400
+    return jsonify({"success": success, "message": message}), status_code
 
 
 @app.route("/api/stocks/remove", methods=["POST"])
@@ -52,7 +64,14 @@ def api_remove_stock():
     data = request.get_json()
     code = data.get("code", "")
     success, message = remove_stock(code)
-    return jsonify({"success": success, "message": message}), 200 if success else 400
+    status_code = 200 if success else 400
+    return jsonify({"success": success, "message": message}), status_code
+
+
+@app.route("/api/debug/<code>")
+def api_debug(code: str):
+    """デバッグ用: 指定銘柄のデータ取得テスト"""
+    return jsonify(debug_fetch(code))
 
 
 if __name__ == "__main__":
