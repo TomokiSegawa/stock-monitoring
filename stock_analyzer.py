@@ -3,6 +3,7 @@
 Yahoo Finance APIを使って日本株のデータを取得し、テクニカル分析を行う
 """
 
+import json
 import logging
 import time
 import yfinance as yf
@@ -48,13 +49,16 @@ def add_stock(code: str) -> tuple[bool, str]:
         df = _download_stock(ticker_symbol, period="5d")
         if df is None or df.empty:
             return False, f"銘柄コード {code} のデータが見つかりません"
-        # 銘柄名の取得を試みる
+        # 銘柄名の取得を試みる（JSONDecodeError が発生しやすい箇所）
+        name = f"銘柄{code}"
         try:
             ticker = yf.Ticker(ticker_symbol)
             info = ticker.info or {}
-            name = info.get("longName") or info.get("shortName") or f"銘柄{code}"
-        except Exception:
-            name = f"銘柄{code}"
+            name = info.get("longName") or info.get("shortName") or name
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"銘柄名取得でJSONエラー {code}: {e}")
+        except Exception as e:
+            logger.warning(f"銘柄名取得失敗 {code}: {e}")
         additional_stocks[code] = name
         return True, f"{code}（{name}）を追加しました"
     except Exception as e:
@@ -72,8 +76,19 @@ def remove_stock(code: str) -> tuple[bool, str]:
     return False, f"{code} は登録されていません"
 
 
+def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """MultiIndex カラムをフラット化する"""
+    if isinstance(df.columns, pd.MultiIndex):
+        # ("Close", "9104.T") -> "Close" のようにフラット化
+        df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+    return df
+
+
 def _download_stock(ticker_symbol: str, period: str = "6mo") -> Optional[pd.DataFrame]:
-    """yf.download を使って株価データを取得し、カラムをフラット化する"""
+    """yf.download を使って株価データを取得し、カラムをフラット化する。
+    yf.download が失敗した場合は Ticker.history() をフォールバックとして使用する。
+    """
+    # 方法1: yf.download
     for attempt in range(3):
         try:
             df = yf.download(
@@ -84,16 +99,36 @@ def _download_stock(ticker_symbol: str, period: str = "6mo") -> Optional[pd.Data
                 timeout=15,
             )
             if df is not None and not df.empty:
-                # MultiIndex カラムをフラット化
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.droplevel("Ticker")
-                logger.info(f"取得成功 {ticker_symbol}: {len(df)}行, カラム={list(df.columns)}")
+                df = _flatten_columns(df)
+                logger.info(f"[download] 取得成功 {ticker_symbol}: {len(df)}行, カラム={list(df.columns)}")
                 return df
-            logger.warning(f"空データ {ticker_symbol} (attempt {attempt + 1})")
+            logger.warning(f"[download] 空データ {ticker_symbol} (attempt {attempt + 1}/3)")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"[download] JSONパースエラー {ticker_symbol} (attempt {attempt + 1}/3): {e}")
         except Exception as e:
-            logger.error(f"取得エラー {ticker_symbol} (attempt {attempt + 1}): {e}")
+            logger.error(f"[download] 取得エラー {ticker_symbol} (attempt {attempt + 1}/3): {e}")
         if attempt < 2:
-            time.sleep(1)
+            time.sleep(2 * (attempt + 1))  # 2秒, 4秒 の指数バックオフ
+
+    # 方法2: Ticker.history() をフォールバックとして使用
+    logger.info(f"[history] フォールバック開始 {ticker_symbol}")
+    for attempt in range(2):
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            df = ticker.history(period=period, timeout=15)
+            if df is not None and not df.empty:
+                df = _flatten_columns(df)
+                logger.info(f"[history] 取得成功 {ticker_symbol}: {len(df)}行, カラム={list(df.columns)}")
+                return df
+            logger.warning(f"[history] 空データ {ticker_symbol} (attempt {attempt + 1}/2)")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"[history] JSONパースエラー {ticker_symbol} (attempt {attempt + 1}/2): {e}")
+        except Exception as e:
+            logger.error(f"[history] 取得エラー {ticker_symbol} (attempt {attempt + 1}/2): {e}")
+        if attempt < 1:
+            time.sleep(3)
+
+    logger.error(f"全ての取得方法が失敗: {ticker_symbol}")
     return None
 
 
@@ -407,21 +442,31 @@ def analyze_stock(code: str) -> Optional[dict]:
         logger.info(f"分析完了: {code} -> {recommendation_label} (score={total_score:.2f})")
         return result
 
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error(f"分析中にJSONパースエラー: {code}: {e}")
+        return None
     except Exception as e:
         logger.error(f"分析中にエラー: {code}: {e}", exc_info=True)
         return None
 
 
-def analyze_all_stocks() -> list[dict]:
+def analyze_all_stocks() -> dict:
     """全登録銘柄の分析を行う"""
     results = []
     errors = []
     for code, name in get_all_stocks().items():
-        result = analyze_stock(code)
-        if result:
-            results.append(result)
-        else:
-            errors.append({"code": code, "name": name})
+        try:
+            result = analyze_stock(code)
+            if result:
+                results.append(result)
+            else:
+                errors.append({"code": code, "name": name, "reason": "データ取得または分析に失敗"})
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"銘柄 {code} のJSON解析エラー: {e}")
+            errors.append({"code": code, "name": name, "reason": f"JSONパースエラー: {e}"})
+        except Exception as e:
+            logger.error(f"銘柄 {code} の分析中にエラー: {e}")
+            errors.append({"code": code, "name": name, "reason": str(e)})
     return {"results": results, "errors": errors}
 
 
@@ -434,16 +479,18 @@ def debug_fetch(code: str) -> dict:
     try:
         df = yf.download(ticker_symbol, period="5d", progress=False, auto_adjust=True, timeout=15)
         if df is not None and not df.empty:
+            df_flat = _flatten_columns(df.copy())
             info["steps"].append({
                 "method": "yf.download",
                 "success": True,
                 "rows": len(df),
-                "columns": str(list(df.columns)),
+                "columns": str(list(df_flat.columns)),
                 "column_type": str(type(df.columns)),
-                "sample": df.tail(2).to_dict(),
             })
         else:
             info["steps"].append({"method": "yf.download", "success": False, "reason": "empty"})
+    except (json.JSONDecodeError, ValueError) as e:
+        info["steps"].append({"method": "yf.download", "success": False, "reason": f"JSONDecodeError: {e}"})
     except Exception as e:
         info["steps"].append({"method": "yf.download", "success": False, "reason": str(e)})
 
@@ -461,7 +508,12 @@ def debug_fetch(code: str) -> dict:
             })
         else:
             info["steps"].append({"method": "Ticker.history", "success": False, "reason": "empty"})
+    except (json.JSONDecodeError, ValueError) as e:
+        info["steps"].append({"method": "Ticker.history", "success": False, "reason": f"JSONDecodeError: {e}"})
     except Exception as e:
         info["steps"].append({"method": "Ticker.history", "success": False, "reason": str(e)})
+
+    # Step 3: yfinance バージョン情報
+    info["yfinance_version"] = yf.__version__
 
     return info
