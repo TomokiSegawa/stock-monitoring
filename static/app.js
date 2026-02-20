@@ -454,7 +454,7 @@ async function loadRegisteredStocks() {
     try {
         const res = await fetch("/api/stocks");
         const stocks = await res.json();
-        const defaultCodes = ["9104", "8604", "6098", "8058"];
+        const defaultCodes = ["9104", "8604", "6098", "8058", "7203", "6758", "9984", "7974", "6861", "8306"];
 
         container.innerHTML = Object.entries(stocks).map(([code, name]) => {
             const isDefault = defaultCodes.includes(code);
