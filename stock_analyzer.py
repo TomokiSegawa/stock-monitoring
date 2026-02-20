@@ -9,7 +9,7 @@ import time
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 
 # デフォルト銘柄
 DEFAULT_STOCKS = {
-    "9104": "商船三井",
-    "8604": "野村ホールディングス",
-    "6098": "リクルートホールディングス",
-    "8058": "三菱商事",
+    "9432": "NTT",
+    "8306": "三菱UFJ",
+    "4452": "花王",
+    "3402": "東レ",
+    "1812": "鹿島建設",
+    "4502": "武田薬品",
 }
 
 # 追加銘柄を保持するインメモリストア
@@ -437,7 +439,7 @@ def analyze_stock(code: str) -> Optional[dict]:
             "total_score": round(total_score, 2),
             "signals": signals,
             "recent_prices": recent_prices,
-            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "last_updated": datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M"),
         }
         logger.info(f"分析完了: {code} -> {recommendation_label} (score={total_score:.2f})")
         return result
