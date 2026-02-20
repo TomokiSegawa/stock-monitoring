@@ -64,8 +64,8 @@ async function loadAllData() {
             return;
         }
 
-        renderCards();
         showLoading(false);
+        renderCards();
     } catch (err) {
         showError(`通信エラー: ${err.message}<br>ページを再読み込みしてください。`);
     }
@@ -454,7 +454,7 @@ async function loadRegisteredStocks() {
     try {
         const res = await fetch("/api/stocks");
         const stocks = await res.json();
-        const defaultCodes = ["9104", "8604", "6098", "8058"];
+        const defaultCodes = ["9432", "8306", "4452", "3402", "1812", "4502"];
 
         container.innerHTML = Object.entries(stocks).map(([code, name]) => {
             const isDefault = defaultCodes.includes(code);
