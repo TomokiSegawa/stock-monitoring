@@ -9,7 +9,7 @@ import time
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
@@ -443,7 +443,7 @@ def analyze_stock(code: str) -> Optional[dict]:
             "total_score": round(total_score, 2),
             "signals": signals,
             "recent_prices": recent_prices,
-            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "last_updated": datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M"),
         }
         logger.info(f"分析完了: {code} -> {recommendation_label} (score={total_score:.2f})")
         return result

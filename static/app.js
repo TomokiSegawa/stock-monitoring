@@ -64,8 +64,8 @@ async function loadAllData() {
             return;
         }
 
-        renderCards();
         showLoading(false);
+        renderCards();
     } catch (err) {
         showError(`通信エラー: ${err.message}<br>ページを再読み込みしてください。`);
     }
